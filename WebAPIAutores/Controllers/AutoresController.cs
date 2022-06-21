@@ -1,13 +1,17 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebAPIAutores.DTOs;
 using WebAPIAutores.Entidades;
+using WebAPIAutores.Utilidades;
 
 namespace WebAPIAutores.Controllers
 {
     [ApiController]
     [Route("api/autores")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "esAdmin")]
     public class AutoresController : ControllerBase
     {
         private readonly ApplicationDbContext context;
@@ -21,19 +25,26 @@ namespace WebAPIAutores.Controllers
 
 
         [HttpGet]
-        public async Task<ActionResult<List<AutorDTO>>> Get() {
-            var autores =  await context.Autores.ToListAsync(); 
+        [AllowAnonymous]
+        public async Task<ActionResult<List<AutorDTO>>> Get([FromQuery] PaginacionDTO paginacionDTO) {
+            var queryble = context.Autores.AsQueryable();
+            await HttpContext.InsertarParametrosPaginacionEnCabecera(queryble);
+
+            var autores =  await queryble.OrderBy(a=>a.Name).Paginar(paginacionDTO).ToListAsync(); 
             return Mapper.Map<List<AutorDTO>>(autores);
         }
 
-        [HttpGet("{id:int}")]
-        public async Task<ActionResult<AutorDTO>> Get(int id) {
-            var autor = await context.Autores.FirstOrDefaultAsync(x => x.Id == id);
+        [HttpGet("{id:int}", Name = "obtenerAutor")]
+        public async Task<ActionResult<AutorDTOConLibros>> Get(int id) {
+            var autor = await context.Autores
+                .Include(a=>a.autoresLibros)
+                .ThenInclude(a=>a.Libro)
+                .FirstOrDefaultAsync(x => x.Id == id);
             if (autor == null)
             {
                 return NotFound();
             }
-            return Mapper.Map<AutorDTO>(autor);
+            return Mapper.Map<AutorDTOConLibros>(autor);
         }
         
         [HttpGet("{nombre}")]
@@ -56,23 +67,24 @@ namespace WebAPIAutores.Controllers
             var autor = Mapper.Map<Autor>(autorCreacionDTO);
             context.Add(autor);
             await context.SaveChangesAsync();
-            return Ok();
+            var autorDTO = Mapper.Map<AutorDTO>(autor);
+            return CreatedAtRoute("obtenerAutor", new { id = autor.Id }, autorDTO);
         }
 
         [HttpPut("{id:int}")]
-        public async Task<ActionResult> Put(Autor autor,int id) {
-            if (autor.Id != id)
-            {
-                return BadRequest("El id no coincide con el id de la url");
-            }
+        public async Task<ActionResult> Put(AutorCreacionDTO autorCreacionDTO,int id) {
+            
             var existe = await context.Autores.AnyAsync(x => x.Id == id);
             if (!existe)
             {
                 return NotFound();
             }
+            var autor = Mapper.Map<Autor>(autorCreacionDTO);
+            autor.Id = id;  
+
             context.Update(autor);
             await context.SaveChangesAsync();
-            return Ok();
+            return NoContent();
         }
 
         [HttpDelete("{id:int}")]

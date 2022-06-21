@@ -8,7 +8,9 @@ namespace WebAPIAutores.DTOs
 
         [PrimeraLetraMayusculaAttribute]
         [StringLength(maximumLength: 120)]
+        [Required]
         public string Titulo { get; set; }
-        public List<int> AutoresId { get; set; }
+        public DateTime FechaPublicacion { get; set; }
+        public List<int> AutoresIds { get; set; }
     }
 }
